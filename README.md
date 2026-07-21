@@ -1,126 +1,195 @@
-# Tableau Formula Export
+# Multi-Dashboard Formula Config Guide
 
-A Tableau Dashboard Extension: export the selected worksheet to Excel with
-**live Excel formulas** injected for calculated fields, instead of Tableau's
-static computed values. Built with Next.js, deployable entirely on Vercel —
-same structure as the AI Canvas extension.
+## New Structure
 
-Tableau natively exports a calculated field as a value only. This extension
-rebuilds the export server-side and replaces mapped calculated-field columns
-with real Excel formulas (e.g. `=C2/B2`), so the column recalculates when the
-source cells are edited.
-
-## How it works
-
-```
-Tableau dashboard
-   │  getSummaryDataAsync({ maxRows: 0 })     ← full data, not paginated view state
-   ▼
-/extension (client)                            app/extension/page.tsx
-   │  POST { sheetName, columns, rows } → /api/export
-   ▼
-/api/export (Node serverless)                  app/api/export/route.ts + lib/excelBuilder.ts
-   │  reads lib/formulaConfig.json
-   │  matches calc-field name → column, injects "=<expr>" per row (exceljs)
-   ▼
-.xlsx download
-```
-
-`getSummaryDataAsync` returns computed values only, so the extension can't know
-a calc field's definition on its own — you declare it once in
-`lib/formulaConfig.json`. That file is the single source of truth; the UI reads
-it via `GET /api/export` to show which columns will become formulas.
-
-The Python/openpyxl backend from earlier iterations is replaced by a
-TypeScript `exceljs` builder so the whole thing runs as a Vercel serverless
-function — no separate always-on host needed.
-
-## Configure the formula mapping
-
-`lib/formulaConfig.json` maps a **column name** (exactly as it appears in the
-summary data) to an Excel formula template. Reference other columns with
-`{Column Name}`:
+The formula config now supports **multiple dashboards/worksheets** with different formula sets:
 
 ```json
 {
-  "quantity per order": "{Quantity} / {Count of Orders}",
-  "Nett Report": "{Gross Report} + {Bonus} + {Tax}"
+  "Worksheet Name 1": {
+    "Column Name": "formula template"
+  },
+  "Worksheet Name 2": {
+    "Column Name": "formula template"
+  },
+  "__default": {
+    "Column Name": "fallback formula"
+  }
 }
 ```
 
-At export time each `{Column Name}` resolves to that column's letter + the
-current row, e.g. `{Quantity} / {Count of Orders}` → `=C2/B2`, `=C3/B3`, …
-Names and references are **case-sensitive** and must match Tableau's field
-names. An unmatched reference returns a 400 listing the available columns.
+## How It Works
 
-## Deploying on Vercel, connected to GitHub
+1. **When you select a worksheet** in the extension UI, it's sent to the backend
+2. **Backend looks up** `formulaConfig[worksheetName]`
+3. **If not found**, falls back to `__default`
+4. **Only matched columns** get formulas; others export as values
 
-1. Push to a new GitHub repo:
-   ```bash
-   cd tableau-formula-export
-   git init
-   git add .
-   git commit -m "Initial commit"
-   gh repo create your-org/tableau-formula-export --private --source=. --push
-   ```
-2. Import the repo in Vercel (New Project → pick the repo → Deploy). No env
-   vars required.
-3. After the first deploy, note your production URL and update it in **two**
-   places, then redeploy:
-   - `public/tableau-extension.trex` → `<source-location><url>`
-   - (nothing else — the client calls `/api/export` on the same origin)
+## Example Config (Your Setup)
 
-## Loading into Tableau
+```json
+{
+  "CSAT Responses": {
+    "Score": "{Satisfied Count} * 100 / {Total Count}",
+    "Satisfaction Rate": "{Very Satisfied Count} * 100 / {Total Count}"
+  },
+  "Sales Dashboard": {
+    "quantity per order": "{Quantity} / {Count of Orders}",
+    "profit per order": "{Profit} / {Count of Orders}",
+    "Revenue per Deal": "{Total Revenue} / {Deal Count}"
+  },
+  "Customer Journey": {
+    "Conversion Rate": "{Customers Converted} * 100 / {Customers Visited}",
+    "Avg Deal Value": "{Total Revenue} / {Deal Count}"
+  },
+  "__default": {
+    "profit per order": "{Profit} / {Count of Orders}"
+  }
+}
+```
 
-Download `public/tableau-extension.trex`, then in a dashboard drag in an
-**Extension** object → **Access Local Extensions** → select the `.trex`.
-Tableau will prompt once to allow **full data** access (required for
-`maxRows: 0`).
+## Adding a New Dashboard
 
-## Local development
+### Step 1: Create the new worksheet in Tableau
 
+Build your dashboard with the measures you need (raw values + aggregates).
+
+### Step 2: Add its config entry
+
+Edit `lib/formulaConfig.json` and add a new key with the **exact worksheet name**:
+
+```json
+{
+  "CSAT Responses": { ... },
+  "New Dashboard Name": {
+    "Your Formula Column": "{Component A} + {Component B}",
+    "Another Formula": "{X} / {Y} * 100"
+  },
+  "__default": { ... }
+}
+```
+
+**Important:** Worksheet name must be **exactly** as it appears in Tableau (case-sensitive).
+
+### Step 3: Deploy
+
+Push to GitHub → Vercel redeploys → done. No code changes needed.
+
+## Finding Exact Worksheet Names
+
+In the extension UI, the dropdown shows all available worksheets. Your exact names are in that list.
+
+If unsure, check the console or add temporary logging:
+```typescript
+// In app/extension/page.tsx
+console.log("Available worksheets:", worksheets);
+```
+
+## Fallback Behavior (__default)
+
+If you export from a worksheet **not** in the config, formulas in `__default` are applied.
+
+This is optional—you can leave it empty:
+```json
+{
+  "CSAT Responses": { ... },
+  "__default": {}
+}
+```
+
+Then unmapped worksheets export **only raw values**, no formulas.
+
+## Testing a New Dashboard
+
+1. **In Tableau**, add the new worksheet to a dashboard
+2. **In the extension**, select it from the dropdown
+3. **Check the UI** — formula columns should appear if configured
+4. **Export** — verify formulas are injected in Excel
+
+If formulas don't appear:
+- Worksheet name doesn't match config (typo in JSON)
+- Column names in export don't match config (use actual exported headers)
+- Formula references a column that doesn't exist in export
+
+## Column Name Matching
+
+The `formulaConfig.json` keys must match **exactly** how Tableau exports them. If Tableau names the measure "Satisfied Count" but you write "satisfied_count", the formula won't apply.
+
+Run one export to see the actual header row, then match the config to it.
+
+## Example Workflow
+
+**Your CSAT Responses worksheet exports:**
+```
+Company Name | Dealer Num | Satisfied Count | Total Count | Score
+Acme Inc     | 100        | 15              | 18          | 83.33
+```
+
+**Config entry:**
+```json
+"CSAT Responses": {
+  "Score": "{Satisfied Count} * 100 / {Total Count}"
+}
+```
+
+**Excel output:**
+```
+Column E (Score) receives formula: =C2*100/D2
+```
+
+User edits C2 → E2 recalculates automatically.
+
+## API Changes
+
+### GET /api/export
+
+**Old behavior:** Returns all formulas (flat structure)
 ```bash
-npm install
-npm run dev        # http://localhost:3000/extension
+curl /api/export
+→ { "quantity per order": "...", "profit per order": "..." }
 ```
 
-To test the extension inside Tableau while developing, point the `.trex`
-`<url>` at `http://localhost:3000/extension`.
+**New behavior:** Returns formulas for a specific worksheet
+```bash
+curl /api/export?worksheet=CSAT%20Responses
+→ { "Score": "...", "Satisfaction Rate": "..." }
 
-## Notes / gotchas
-
-- **Use it on aggregated crosstabs, not row-level data.** A ratio like
-  `SUM([Quantity]) / COUNT([Orders])` is an aggregate. The `=C/B` formula only
-  reconstructs it correctly when each row is already aggregated (one row per
-  Category, etc.). On a raw row-level export the arithmetic won't reproduce the
-  Tableau value.
-- **Measure Names / Measure Values pivots** can change how columns arrive in
-  the summary data. Check the exported header row and align config keys to the
-  actual field names.
-- CORS isn't an issue — the client and `/api/export` share one origin, the
-  same reason the AI Canvas app proxies the Tableau lib through its own domain.
-
-## Layout
-
+curl /api/export
+→ { "CSAT Responses": {...}, "Sales Dashboard": {...}, "__default": {...} }
 ```
-tableau-formula-export/
-├── app/
-│   ├── layout.tsx
-│   ├── page.tsx                          landing (not used inside Tableau)
-│   ├── extension/
-│   │   └── page.tsx                      worksheet picker + export UI
-│   └── api/
-│       ├── export/route.ts               GET config · POST build xlsx
-│       └── tableau-extensions-lib/route.ts   proxy for Tableau's JS lib
-├── lib/
-│   ├── excelBuilder.ts                   formula-injection logic (exceljs)
-│   └── formulaConfig.json                calc-field → Excel formula mapping
-├── public/
-│   ├── tableau-extension.trex            manifest (source URL, permissions)
-│   └── tableau-extensions.min.js         Tableau Extensions API library
-├── global.d.ts                           window.tableau typings
-├── next.config.mjs                       iframe headers for Tableau
-├── vercel.json                           export function maxDuration
-├── tsconfig.json
-└── package.json
+
+The extension UI automatically queries with the selected worksheet name.
+
+## Backend Code Changes (Summary)
+
+| File | Change |
+|------|--------|
+| `lib/excelBuilder.ts` | New `getFormulaMap(worksheetName)` function looks up by worksheet; `buildWorkbook()` passes sheet context |
+| `app/api/export/route.ts` | GET now accepts `?worksheet=` query param |
+| `app/extension/page.tsx` | Fetches formulas whenever worksheet selection changes |
+| `lib/formulaConfig.json` | Restructured as nested object (worksheet → formulas) |
+
+## Tips
+
+1. **Copy-paste column names** from exported headers to avoid typos
+2. **Keep formulas simple** — Excel can handle `{A}+{B}` but not deeply nested logic
+3. **Test with small export** first before rolling out to production
+4. **Document in Tableau** — add a note which columns have formulas so users aren't surprised
+5. **Version control** — commit `formulaConfig.json` changes to track formula evolution
+
+## Removing a Dashboard
+
+Just delete its entry from the JSON:
+```json
+{
+  "CSAT Responses": { ... },
+  // "Old Dashboard": { ... },  ← deleted
+  "__default": { ... }
+}
 ```
+
+Exports from that worksheet will fall back to `__default` (or no formulas if `__default` is empty).
+
+## Questions?
+
+Check the actual worksheet names in the extension dropdown. If a worksheet isn't in the config, check `__default`. If neither has the formula, it won't be applied—that's expected.
