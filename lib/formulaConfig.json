@@ -1,3 +1,4 @@
 {
-  "quantity per order": "{Quantity} / {Count of Orders}"
+  "quantity per order": "{Quantity} / {Count of Orders}",
+  "profit per order": "{Profit} / {Count of Orders}"
 }
