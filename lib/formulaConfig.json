@@ -1,12 +1,11 @@
 {
-  "CSAT Responses": {
-    "Score": "{Satisfied Count} * 100 / {Total Count}",
-    "Satisfaction Rate": "{Very Satisfied Count} * 100 / {Total Count}"
+  "Rekap Transport Pribadi & Tunjangan Visit": {
+    "Total KM": "{Distance1} / 1000",
+    "Total Transport": "{Custom Rate} * {Total KM}"
   },
   "Sales Dashboard": {
     "quantity per order": "{Quantity} / {Count of Orders}",
-    "profit per order": "{Profit} / {Count of Orders}",
-    "Revenue per Deal": "{Total Revenue} / {Deal Count}"
+    "profit per order": "{Profit} / {Count of Orders}"
   },
   "__default": {
     "profit per order": "{Profit} / {Count of Orders}"
