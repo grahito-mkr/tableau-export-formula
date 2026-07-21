@@ -1,12 +1,10 @@
 {
-  "Sales Dashboard": {
+  "Test Formula Export": {
     "quantity per order": "{Quantity} / {Count of Orders}",
     "profit per order": "{Profit} / {Count of Orders}",
-    "Profitable": "IF({profit per order}>20,\"profitable\",\"not profitable\")",
+    "AGG(Profitable)": "IF({profit per order}>20,\"profitable\",\"not profitable\")",
     "Sales Share": "IF({Category}=\"Furniture\",{Sales}*0.3,IF({Category}=\"Office Supplies\",{Sales}*0.5,IF({Category}=\"Technology\",{Sales}*0.2,0)))",
     "Quantity Share": "{Quantity}/{Total Quantity}"
   },
-  "__default": {
-    "profit per order": "{Profit} / {Count of Orders}"
-  }
+  "__default": {}
 }
