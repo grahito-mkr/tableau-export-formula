@@ -5,6 +5,64 @@ import Script from "next/script";
 
 type Status = { kind: "ok" | "err" | "busy" | ""; msg: string };
 
+interface TableauDataTable {
+  columns: { fieldName: string }[];
+  data: { value: unknown; formattedValue: string }[][];
+}
+
+// Tableau returns crosstabs built on Measure Names / Measure Values in a
+// stacked ("long") shape: one row per dimension-combo per measure, with the
+// measure identity living inside the "Measure Names" column. We pivot that
+// back to a normal wide table (one column per measure) so per-row formulas
+// like {Profit}/{Count of Orders} have real columns to reference.
+//
+// The measure column headers come from the Measure Names *formattedValue*
+// (the friendly caption, e.g. "Profit"), not .value (an internal id like
+// "[sqlproxy...].[sum:Profit:qk]").
+function toWideTable(dataTable: TableauDataTable): {
+  columns: string[];
+  rows: Record<string, unknown>[];
+} {
+  const names = dataTable.columns.map((c) => c.fieldName);
+  const mn = names.indexOf("Measure Names");
+  const mv = names.indexOf("Measure Values");
+
+  // Not a Measure Names/Values crosstab - already wide, map values directly.
+  if (mn === -1 || mv === -1) {
+    return {
+      columns: names,
+      rows: dataTable.data.map((row) => {
+        const obj: Record<string, unknown> = {};
+        dataTable.columns.forEach((c, i) => {
+          obj[c.fieldName] = row[i].value;
+        });
+        return obj;
+      })
+    };
+  }
+
+  const dimIdx = names.map((_n, i) => i).filter((i) => i !== mn && i !== mv);
+  const dimNames = dimIdx.map((i) => names[i]);
+
+  const measureOrder: string[] = [];
+  const rowMap = new Map<string, Record<string, unknown>>();
+
+  for (const row of dataTable.data) {
+    const key = dimIdx.map((i) => String(row[i].value)).join("||");
+    let obj = rowMap.get(key);
+    if (!obj) {
+      obj = {};
+      dimIdx.forEach((i) => (obj![names[i]] = row[i].value));
+      rowMap.set(key, obj);
+    }
+    const measure = row[mn].formattedValue;
+    if (!measureOrder.includes(measure)) measureOrder.push(measure);
+    obj[measure] = row[mv].value;
+  }
+
+  return { columns: [...dimNames, ...measureOrder], rows: Array.from(rowMap.values()) };
+}
+
 export default function ExtensionPage() {
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -83,14 +141,7 @@ export default function ExtensionPage() {
 
     try {
       const dataTable = await worksheet.getSummaryDataAsync({ maxRows: 0 });
-      const columns = dataTable.columns.map((c) => c.fieldName);
-      const rows = dataTable.data.map((row) => {
-        const obj: Record<string, unknown> = {};
-        dataTable.columns.forEach((c, i) => {
-          obj[c.fieldName] = row[i].value;
-        });
-        return obj;
-      });
+      const { columns, rows } = toWideTable(dataTable);
 
       setStatus({ kind: "busy", msg: "Building Excel file..." });
 
