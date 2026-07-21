@@ -1,12 +1,19 @@
-import { buildWorkbook, getFormulaMap, type ExportPayload } from "@/lib/excelBuilder";
+import { buildWorkbook, getFormulaMapForWorksheet, getAllFormulaMappings, type ExportPayload } from "@/lib/excelBuilder";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// GET /api/export -> the formula mapping, so the extension UI can show which
-// columns will be turned into live formulas.
-export async function GET() {
-  return Response.json(getFormulaMap());
+// GET /api/export?worksheet=<name> -> the formula mapping for that worksheet,
+// so the extension UI can show which columns will be turned into live formulas.
+// If no worksheet param, returns all mappings.
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const worksheetName = url.searchParams.get("worksheet");
+  
+  if (worksheetName) {
+    return Response.json(getFormulaMapForWorksheet(worksheetName));
+  }
+  return Response.json(getAllFormulaMappings());
 }
 
 // POST /api/export -> an .xlsx built from the worksheet's summary data, with
