@@ -9,11 +9,22 @@ export interface ExportPayload {
   rows: Row[];
 }
 
-// Map calculated-field column name -> Excel formula template.
-// Reference other columns with {Column Name}; each is resolved to that
-// column's letter + the current row (e.g. "{Quantity} / {Count of Orders}"
-// on row 2 becomes "C2/B2"). Edit lib/formulaConfig.json to add mappings.
-const FORMULA_MAP = formulaConfig as Record<string, string>;
+// formulaConfig is structured as:
+// {
+//   "Worksheet Name": { "Column": "formula template" },
+//   "__default": { "Column": "fallback formula" }
+// }
+// We look up by worksheet name first, then fall back to __default.
+const CONFIG = formulaConfig as Record<string, Record<string, string>>;
+
+function getFormulaMap(worksheetName: string): Record<string, string> {
+  // First try exact worksheet name match
+  if (worksheetName in CONFIG) {
+    return CONFIG[worksheetName];
+  }
+  // Fall back to __default if worksheet not found
+  return CONFIG["__default"] || {};
+}
 
 const REF = /\{([^}]+)\}/g;
 
@@ -49,14 +60,17 @@ function resolveFormula(
 }
 
 export async function buildWorkbook(payload: ExportPayload): Promise<ArrayBuffer> {
-  const { columns, rows } = payload;
+  const { columns, rows, sheetName } = payload;
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(payload.sheetName?.slice(0, 31) || "Export");
+  const ws = wb.addWorksheet(sheetName?.slice(0, 31) || "Export");
 
   const colLetter: Record<string, string> = {};
   columns.forEach((name, i) => {
     colLetter[name] = columnLetter(i + 1);
   });
+
+  // Get formula map for this specific worksheet
+  const FORMULA_MAP = getFormulaMap(sheetName || "");
 
   ws.addRow(columns);
 
@@ -80,6 +94,10 @@ export async function buildWorkbook(payload: ExportPayload): Promise<ArrayBuffer
   return out;
 }
 
-export function getFormulaMap(): Record<string, string> {
-  return FORMULA_MAP;
+export function getAllFormulaMappings(): Record<string, Record<string, string>> {
+  return CONFIG;
+}
+
+export function getFormulaMapForWorksheet(worksheetName: string): Record<string, string> {
+  return getFormulaMap(worksheetName);
 }
