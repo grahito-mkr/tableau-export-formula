@@ -121,13 +121,17 @@ export default function ExtensionPage() {
     };
   }, []);
 
-  // Load the formula mapping so we can show which columns become live formulas.
+  // Load the formula mapping for the selected worksheet whenever it changes.
   useEffect(() => {
-    fetch("/api/export")
+    if (!selected) {
+      setFormulaCols([]);
+      return;
+    }
+    fetch(`/api/export?worksheet=${encodeURIComponent(selected)}`)
       .then((r) => (r.ok ? r.json() : {}))
       .then((map) => setFormulaCols(Object.keys(map)))
       .catch(() => setFormulaCols([]));
-  }, []);
+  }, [selected]);
 
   async function onExport() {
     if (!selected || busy || !window.tableau) return;
