@@ -1,4 +1,14 @@
 {
-  "quantity per order": "{Quantity} / {Count of Orders}",
-  "profit per order": "{Profit} / {Count of Orders}"
+  "CSAT Responses": {
+    "Score": "{Satisfied Count} * 100 / {Total Count}",
+    "Satisfaction Rate": "{Very Satisfied Count} * 100 / {Total Count}"
+  },
+  "Sales Dashboard": {
+    "quantity per order": "{Quantity} / {Count of Orders}",
+    "profit per order": "{Profit} / {Count of Orders}",
+    "Revenue per Deal": "{Total Revenue} / {Deal Count}"
+  },
+  "__default": {
+    "profit per order": "{Profit} / {Count of Orders}"
+  }
 }
